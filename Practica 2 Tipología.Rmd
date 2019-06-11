@@ -1,0 +1,512 @@
+
+---
+Titule: Practica 2 Tipología de los datos
+Autor: Juan Carlos Morales - Estebas Salazar
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    number_sections: yes
+    toc: yes
+    toc_depth: 4
+    toc_float: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,error = FALSE)
+library(Hmisc)
+library(gmodels)
+library(VIM)
+library(knitr)
+library(corrplot)
+library(dplyr)
+library(factoextra)
+library(missMDA)
+library(Rcpp)
+library(mice)
+library(FactoMineR)
+library(ggfortify)
+library(ggcorrplot)
+library(cluster)
+library(C50)
+library(DataExplorer)
+library(grid)
+library(gridExtra)
+library(ggplot2)
+library(outliers)
+library(randomForest)
+library(caret)
+```
+
+
+# Descripción del dataset. ¿Por qué es importante y qué pregunta/problema pretende responder?
+
+## Descripción y justificación
+<div class=text-justify>
+El presente data set se elige para la práctica principalmente por ser un conjunto de datos que
+cuenta con variables mixtas, es decir, numéricas y categóricas, esta característica 
+nos permite implementar diferentes técnicas estadísticas que responden a diferentes 
+preguntas de negocio, el presente análisis lo dividiremos para responder dos preguntas
+de negocio, las preguntas son:  
+* Crear un modelo que permita predecir el factor de riesgo del vehículo?  
+* Cual es la segmentación adecuada para los vehículos de acuerdo a sus características?  
+   
+</div>.
+
+## descripción del data set
+<div class=text-justify>
+El data set cuenta con 205 registros y 26 variables que describen una serie de vehículos,
+las variables son:  
+
+ 1. Simbolización  
+ 2. Pérdidas normalizadas: continúas de 65 a 256.  
+ 3. marca    
+ 4. fuel-type: diesel, gas.  
+ 5. Aspiración: estándar, turbo.  
+ 6. Número de puertas: cuatro, dos.  
+ 7. estilo del cuerpo: techo rígido, vagón, sedán, hatchback, convertible.  
+ 8. ruedas motrices: 4wd, fwd, rwd.  
+ 9. Ubicación del motor: delantero, trasero.  
+ 10. distancia entre ejes: continúa desde 86.6 120.9.  
+ 11. longitud: continúa de 141.1 a 208.1.  
+ 12. ancho: continúo desde 60.3 hasta 72.3.  
+ 13. altura: continúa de 47.8 a 59.8.  
+ 14. peso en vacío: continúo de 1488 a 4066.  
+ 15. tipo de motor: dohc, dohcv, l, ohc, ohcf, ohcv, rotor.  
+ 16. número de cilindros: ocho, cinco, cuatro, seis, tres, doce, dos.  
+ 17. tamaño del motor: continúo de 61 a 326.  
+ 18. sistema de combustible: 1bbl, 2bbl, 4bbl, idi, mfi, mpfi, spdi, spfi.  
+ 19. Diámetro: continúo de 2,54 a 3,94.    
+ 20. golpe: continúo de 2.07 a 4.17.  
+ 21. relación de compresión: continúa de 7 a 23.  
+ 22. caballos de fuerza: continúa de 48 a 288.  
+ 23. pico-rpm: continúa de 4150 a 6600.  
+ 24. ciudad-mpg: continúa de 13 a 49.  
+ 25. carretera- mpg: continúo de 16 a 54.  
+ 26. precio: continúo de 5118 a 45400.  
+
+</div>. 
+
+# Integración y selección de los datos de interés a analizar.
+
+## Lectura y etiquetado de datos
+ 
+```{r echo=TRUE}
+setwd("D:/juan carlos fupad/Bases De Datos Backup")
+vhc <- read.csv("Imports-85.csv",header = FALSE,sep = ";",dec = ",")
+names(vhc)<-c("symboling","normalized_losses","make","fuel_type","aspiration",
+              "num_of_doors","body_style","drive_wheels","engine_location","wheel_base",
+              "length","width","height","curb_weight","engine_type","num_of_cylinders",
+              "engine_size","fuel_system","bore","stroke","compression_ratio","horsepower",
+              "peak_rpm","city_mpg","highway_mpg","price")
+names(vhc)
+
+```
+
+# Limpieza de los datos.
+
+## ¿Los datos contienen ceros o elementos vacíos? ¿Cómo gestionarías cada uno de estos casos?
+<div class=text-justify>
+Se realiza un analisis descriptivo, donde se identifican variables con datos faltantes, estas son:  
+* **normalized_losses** con 41 vacios.  
+* **bore** con 4 vacios.  
+* **stroke** con 4 vacios.  
+* **horsepower** con 2 vacios.  
+* **peak_rpm** con 2 vacios.  
+* **price** con 4 vacios.  
+
+
+Luego de la revisión, se encuentra que no es una cantidad significativa de datos faltantes, 
+las variables y la cantidad de datos faltantes se muestran a continuación: 
+</div>.
+
+```{r , echo=TRUE,fig.align="center"}
+sapply(vhc, function(x)(sum(is.na(x))))
+```
+
+
+<div class=text-justify>
+Se procede a realizar la imputación de los datos, para lo cual utilizaremos una técnica de mineria de datos con el algoritmo kNN de la librería VIM, esta técnica consiste en imputar el dato faltante de acuerdo a las características de los registros aledaños o de los vecinos más cercanos, para el presente caso utilizaremos 5 vecinos más cercanos.
+</div>.
+
+```{r , echo=TRUE,fig.align="center"}
+vhc_imp <- kNN(vhc,k=5)
+```
+
+<div class=text-justify>
+Luego de implementar la técnica, se genera una columna binaria adicional al data set
+por cada variable, donde en cada registro y variable se indica si el dato es imputado,
+por lo que procedemos a eliminarlas y así continuamos trabajando con el data set original que
+contiene los valores ya imputados y se validan nuevamente las variables para garantizar que no
+existan más datos faltantes.
+</div>.
+
+```{r , echo=TRUE,fig.align="center"}
+vhc <- vhc_imp[,c(1:26)]
+sapply(vhc, function(x)(sum(is.na(x))))
+# Se crea un data set paralelo para aplicar el modelo predictivo, la base se nombra como
+# basep
+basep <- vhc
+vhc<-vhc[,c(10,11,12,13,19,20,21,1,2,14,17,22,23,24,25,26,3:9,15,16,18)]
+
+```
+
+# Tipos de variables y descriptivos
+
+```{r,echo=TRUE }
+glimpse(vhc)
+variables_numeric <- c(1:7)
+options(knitr.kable.NA = '')
+kable(summary(vhc)[,variables_numeric],
+      digits=2, align='l', caption="Descriptivos variables numéricas")
+
+variables_integer <- c(8:16)
+options(knitr.kable.NA = '')
+kable(summary(vhc)[,variables_integer],
+      digits=2, align='l', caption="Descriptivos variables tipo entero")
+
+variables_factor <- c(17:26)
+options(knitr.kable.NA = '')
+kable(summary(vhc)[,variables_factor],
+      digits=2, align='l', caption="Descriptiva variables tipo factor")
+```
+
+
+
+
+## Identificación y tratamiento de valores extremos.
+
+<div class=text-justify>
+Para identificar valores extremos en las variables tipo numeric, realizamos un boxplot para cada una de las variables numéricas, 
+</div>.
+
+```{r , echo=TRUE,fig.align="center"}
+V_numerics <- sapply(vhc,class)
+V_numerics <- which(V_numerics=="numeric")
+
+par(mfrow=c(2,4))
+for (i in 1:7){
+  boxplot(vhc[,V_numerics[i]], main=names(vhc)[V_numerics[i]],col="green")
+}
+```
+
+<div class=text-justify>
+El anterior grafico de boxplot para variables numericas, sirve de apoyo para identificar que existen *outliers* en las siguientes variables:  
+* **wheel_base**  
+* **length**  
+* **width**  
+* **stroke**  
+* **compression_ratio**  
+
+</div>.
+
+<div class=text-justify>
+Para identificar valores extremos en las variables tipo integer, realizamos un histograma para cada una de las variables
+</div>.
+
+```{r , echo=TRUE,fig.align="center"}
+
+V_int <- sapply(vhc,class)
+V_int <- which(V_int=="integer")
+par(mfrow=c(2,5))
+for (i in 1:9){
+  hist(vhc[,V_int[i]], main=names(vhc)[V_int[i]],col="lightblue3")
+}
+```
+
+<div class=text-justify>
+Luego de validar los valores extremos, se encuentra que se deben a características específicas de cada vehículo, esto es porque en el data set se encuentran registros de vehículos tanto de alta como de baja gama, esto hace que no se concentre la información para las variables mencionadas, en ese sentido, no es conveniente suprimir dichos registros del data set, adicionalmente, se vería afectado el estudio, dado que la cantidad de registros no es tan amplia. 
+
+La siguiente tabla muestra un resumen sobre cada una de las variables numéricas.
+</div>.
+
+```{r pressure, echo=TRUE}
+mean_v <- as.vector(sapply(vhc[,V_numerics],mean,na.rm=TRUE ))
+median_v <- as.vector(sapply(vhc[,V_numerics],median, na.rm=TRUE))
+mean_rec <- as.vector(sapply(vhc[,V_numerics],mean, na.rm=TRUE, trim=0.05))
+kable(data.frame(variables= names(vhc)[V_numerics],
+                 Media = mean_v,
+                 Mediana = median_v,
+                 Media_recortada_0.05= mean_rec
+),
+digits=2, caption="Medidas de localización variables numéricas")
+```
+<div class=text-justify>
+Se utiliza la siguiente función, para determinar por encima de que valor un registro se puede considerar atípico en cada variable numérica: Dado que la muestra de vehículos a los cuales se les está realizando el análisis cuenta con registros de vehículos bastante atípicos a los cuales </div>.
+
+```{r, echo=TRUE}
+lista <- vhc[,1:16]
+buscar_outliers<- function (x){
+  buscar <-function (xcol){
+    media <-median(xcol)
+    desviacion<-abs(xcol-media)
+    return (which.max(desviacion))
+  }
+  return (apply(x, 2,buscar))
+}
+buscar_outliers (lista)
+```
+
+
+# Validación de normalidad para las variables numéricas
+
+
+```{r, echo=TRUE,warning=FALSE,fig.align="center"}
+grid.newpage()
+p.wheel_base <- ggplot(vhc, aes(sample = wheel_base))+stat_qq() + stat_qq_line()+ggtitle("wheel_base")
+p.length <- ggplot(vhc, aes(sample = length))+stat_qq() + stat_qq_line()+ggtitle("length")
+p.width <- ggplot(vhc, aes(sample = width))+stat_qq() + stat_qq_line()+ggtitle("width")
+p.height <- ggplot(vhc, aes(sample = height))+stat_qq() + stat_qq_line()+ggtitle("height")
+p.bore <- ggplot(vhc, aes(sample = bore))+stat_qq() + stat_qq_line()+ggtitle("bore")
+p.stroke <- ggplot(vhc, aes(sample = stroke))+stat_qq() + stat_qq_line()+ggtitle("stroke")
+p.compression_ratio <- ggplot(vhc, aes(sample = compression_ratio))+stat_qq() + stat_qq_line()+ggtitle("compression_ratio")
+p.symboling <- ggplot(vhc, aes(sample = symboling))+stat_qq() + stat_qq_line()+ggtitle("symboling")
+grid.arrange(p.wheel_base,p.length,p.width,p.height,p.bore,
+             p.stroke,p.compression_ratio,p.symboling,ncol=2)
+```
+
+
+
+
+```{r, echo=TRUE,fig.align="center"}
+grid.newpage()
+p.normalized_losses <- ggplot(vhc, aes(sample = normalized_losses))+stat_qq() + stat_qq_line()+ggtitle("normalized_losses")
+p.curb_weight <- ggplot(vhc, aes(sample = curb_weight))+stat_qq() + stat_qq_line()+ggtitle("curb_weight")
+p.engine_size <- ggplot(vhc, aes(sample = engine_size))+stat_qq() + stat_qq_line()+ggtitle("engine_size")
+p.horsepower <- ggplot(vhc, aes(sample = horsepower))+stat_qq() + stat_qq_line()+ggtitle("horsepower")
+p.peak_rpm <- ggplot(vhc, aes(sample = peak_rpm))+stat_qq() + stat_qq_line()+ggtitle("peak_rpm")
+p.city_mpg <- ggplot(vhc, aes(sample = city_mpg))+stat_qq() + stat_qq_line()+ggtitle("city_mpg")
+p.highway_mpg <- ggplot(vhc, aes(sample = highway_mpg))+stat_qq() + stat_qq_line()+ggtitle("highway_mpg")
+p.price <- ggplot(vhc, aes(sample = price))+stat_qq() + stat_qq_line()+ggtitle("wheel_base")
+
+grid.arrange(p.normalized_losses,p.curb_weight,p.engine_size,p.horsepower,p.peak_rpm,
+             p.city_mpg,p.highway_mpg,p.price,ncol=2)
+
+```
+
+## Test Shapiro-wilk para cada variable numérica
+
+### Prueba de hipótesis para la asunción de normalidad
+
+<p style="color:rgb(120, 120, 120);">
+$H_o: X \sim Normal$ <br>
+$H_1: X \space no \sim Normal$ <br>
+</p>
+
+<div class=text-justify>
+Con un nivel de confianza del 95%, el test de normalidad implementado para cada variable numérica, indica que en todos los casos el pvalor es inferior a 0.05, es decir, ninguna de estas variables sigue una distribución normal.
+</div>.
+
+```{r, echo=TRUE}
+# Se seleccionan únicamente las variables numéricas del data set
+lista <- vhc[,1:16]
+
+# Se aplica el test de Shapito-wilk para validar normalidad de cada una de
+# las variables
+st <- lapply(lista, shapiro.test)
+
+## Posteriormente se extrae únicamente el p.value de cada test para validar que variables 
+## rechazan la Ho de normalidad
+
+pv <- sapply(st,`[`,c("p.value"))
+pv
+```
+
+
+## Test de Barttlett para homocedasticidad en la varianza de las variables numéricas
+
+### Hipótesis nula y alternativa
+
+<p style="color:rgb(120, 120, 120);">
+$H_o: \sigma^2_{i} = \sigma^2_{j}$ <br>
+$H_1: \sigma^2_{i} \neq \sigma^2_{j} \space para \space cualquier \space par \space de \space i \space y \space j$<br>
+</p>
+
+
+
+```{r, echo=TRUE}
+vt <- bartlett.test(lista)
+vt
+```
+
+<div class=text-justify>
+Dado que el pvalor es inferior a 0.05, con un nivel de significancia del 95%, se rechaza la Ho, es decir, existe diferencia significativa de la varianza entre las diferentes variables.
+</div>.
+
+# Selección de los grupos de datos que se quieren analizar/comparar (planificación de los análisis a aplicar).
+
+## Modelo predictivo para el factor de riesgo del vehículo?
+<div class=text-justify>
+Para responder esta pregunta implementaremos un modelo predictivo basado en arboles de clasificación, se trata del modelo RandomForest, el cual se encuentra disponible en una librería con el mismo nombre.  
+Para implementar el modelo predictivo se re categoriza la variable que identifica el factor de riesgo **(symboling)**, donde 1 expresa que el vehículo tiene un riesgo alto asociado al precio, y el 0 indica que el vehículo es de bajo riesgo, adicionalmente se debe convertir en variable tipo factor.
+</div>.
+
+```{r, echo=TRUE, fig.align=TRUE}
+basep$symboling = ifelse(basep$symboling <= 0,1,0)
+basep$symboling <- as.factor(basep$symboling)
+class(basep$symboling)         
+table(basep$symboling)
+```
+
+<div class=text-justify>
+El siguiente paso es construir el dataset de training y el de testing, se realiza una partición al 70%, quedando el training con 145 registros, para esta partición se utiliza la función **createDataPartition** de la librería **caret**.
+</div>.
+
+```{r, echo=TRUE, fig.align=TRUE}
+set.seed(2018)
+t.ids <- createDataPartition(basep$symboling, p = 0.7, list = F)
+
+```
+
+### Modelo Random Forest
+
+<div class=text-justify>
+Se implementa el algoritmo RandomForest, utilizando 500 árboles aleatorios. 
+</div>.
+
+```{r, echo=TRUE, fig.align=TRUE}
+### x hace referencia a las variables explicativas
+### Y es la variable dependiente o el target, en este caso symboling
+rf <- randomForest(x = basep[t.ids,2:26],
+                   y = basep[t.ids,1],
+                   ntree = 500,
+                   keep.forest = TRUE)
+rf
+```
+
+<div class=text-justify>
+El modelo implementado con el data set de training, genera un error de clasificación del 6,21%, posteriormente se prueba el modelo sobre el data set testing, donde se tiene que el modelo genera una precisión del 95%, y un criterio **kappa** del 0,89, que indica un alto porcentaje de aleatoriedad del modelo, y lo ideal es que se encuentre cercano a la unidad.  
+En cuanto a la matriz de confusión generada con el data set del test, se tiene que el error de clasificación es del 6,45%, es decir, el modelo presenta un buen ajuste.  
+</div>.
+
+```{r, echo=TRUE, fig.align=TRUE}
+pred <- predict(rf, basep[-t.ids,])
+tab <- table(basep[-t.ids,]$symboling, pred, dnn = c("Actual", "Predicha"))
+confusionMatrix(tab)
+```
+
+
+# Reducción de dimensionalidad variables numéricas
+
+<div class=text-justify>
+El conjunto de datos es un conjunto de variables mixtas, es decir, cuenta con variables tanto numéricas como categóricas, para responder a la pregunta 2, se plantea un análisis de clasificación por medio del algoritmo **k-means**. En primera instancia se divide el data set en dos partes, una que contiene todas las variables numéricas y otra con las variables tipo factor. 
+
+Para el data set de variables numéricas se valida la posible correlación entre las variables, este análisis previo se debe realizar para posteriormente implementar una reducción de dimensionalidad por medio de la técnica de componentes principales.
+
+En el siguiente gráfico de correlaciones, se evidencia una fuerte relación entre la mayoría de las variables, por lo que es un indicio positivo para querer implementar el análisis de componentes principales. 
+</div>.
+
+## Correlación de variables 
+
+```{r, echo=TRUE, fig.align=TRUE}
+
+datos_num <-vhc[,c(1:16)]
+corre = rcorr(as.matrix(datos_num),type="pearson")
+corrplot::corrplot.mixed(cor(corre$r), lower="ellipse", upper="number",title="Gráfico de correlaciones")
+
+```
+
+
+## Análisis de componentes principales
+
+<div class=text-justify>
+El objetivo del análisis de componentes principales, es tratar de explicar la mayor cantidad de la variabilidad o varianza de los datos, con un número inferior de dimensiones a las originales. Existen varios criterios para determinar el número de componentes principales que se deben tener en cuenta para el análisis, uno de ellos es retener el número de componentes cuyos valores propios sean mayores que 1, otro criterio es trabajar con el número de componentes que acumulen una variabilidad del 80%.
+</div>.
+
+```{r, echo=TRUE, fig.align=TRUE}
+var_num <- vhc[,c(1:16)]
+## Instrucción PCA para técnica de componentes principales
+Comp_princi=PCA(var_num,graph=F)
+kable(data.frame(Comp_princi$eig),caption = "Resumen PCA")
+fviz_eig(Comp_princi)
+```
+<div class=text-justify>
+Si se tiene en cuenta el primer criterio, es conveniente trabajar con 3 componentes que a su vez acumulan el 74.6% de la variabilidad de los datos. Por otro lado, se tiene el criterio de retener el número componentes necesarias para acumular al rededor del 80%de la variación.
+</div>.
+
+
+```{r, echo=TRUE, fig.align=TRUE}
+kable(data.frame(Comp_princi$var$coord),caption = "Coordenadas de cada variable por componente")
+# Grafico de los individuos y las variables sobre un plano de dos dimensiones
+fviz_pca_biplot(Comp_princi, label = "var",
+                addEllipses=TRUE, ellipse.level=0.95,
+                ggtheme = theme_minimal())
+
+```
+<div class=text-justify>
+En el siguiente grafico se presentan las dos primeras dimensiones del análisis PCA, con estas dos dimensiones se explica el 65.3% de la varianza de los datos.  
+En la componente 1, se tienen bien representadas las variables que hacen referencia a las métricas que enmarcan la potencia del vehículo, como son; caballos de fuerza, peso, longitud, distancia entre ejes entre otras. Mientras que en el componente 2, se encuentran bien representadas las variables que hacen referencia a la parte cualitativa del vehículo, como lo son; millas por galón, perdidas normalizadas, factor de clasificación (Symboling), entre otras.   
+</div>.
+```{r, echo=TRUE, fig.align=TRUE}
+kable(data.frame(Comp_princi$var$contrib),caption = "Contribución de las variables")
+fviz_pca_var(Comp_princi, col.var = "contrib",
+             gradient.cols = c("white", "blue", "red"),
+             ggtheme = theme_minimal())
+
+```
+
+
+```{r, echo=TRUE, fig.align=TRUE}
+kable(data.frame(head(Comp_princi$ind$coord)),caption = "Contribución de los individuos")
+```
+
+# Reducción de dimensionalidad variables categóricas
+
+## Análisis de correspondencias múltiples
+
+<div class=text-justify>
+A diferencia de las variables numéricas, no se tiene un método que permita validar la correlación entre las variables categóricas, más allá del test de asociación, para solventar esta situación, se implementa el presente análisis, 
+</div>.
+
+```{r, echo=TRUE, fig.align=TRUE}
+var_cat <-vhc[,c(17:26)]
+AC1<-MCA(var_cat,graph=F)
+```
+
+```{r, echo=FALSE, fig.align=TRUE}
+fviz_screeplot((AC1))
+```
+
+
+```{r, echo=TRUE, fig.align=TRUE}
+head(round(AC1$eig,2))
+```
+
+
+```{r, echo=FALSE, fig.align=TRUE}
+#fviz_mca_biplot(AC1)
+```
+
+# Análisis cluster
+
+<div class=text-justify>
+Luego de la reducción de dimensionalidad, se consolida una base de datos con las principales coordenadas que explican en gran parte la variabilidad de los datos, y se implementa un análisis cluster para responder a la pregunta 2 (Cual es la segmentación adecuada para los vehículos de acuerdo a sus características?)
+</div>.
+
+```{r, echo=TRUE, fig.align=TRUE}
+base_cluster <- cbind(Comp_princi$ind$coord,AC1$ind$coord)
+km <- kmeans(base_cluster,centers = 3)
+clusplot(base_cluster, km$cluster, color=TRUE, shade=TRUE, labels=2, lines=0)
+```
+
+
+# Conclusiones generales
+
+<div class=text-justify>
+En primera instancia, se realiza la introducción y el análisis exploratorio de los datos, posteriormente se lleva a cabo un barrido por algunas de las técnicas estadísticas más utilizadas en la actualidad, como lo son algoritmos predictivos y de clasificación, en este caso con la implementación del modelo **Random forest** para predecir el riesgo de un vehículo y el algoritmo **kmeans** para clasificar los vehículos de acuerdo a sus características.
+
+Para terminar, se ha identificado que la labor del cientifico de datos comienza desde la selección de los datos y variables a utilizar para responder cualquier pregunta de negocio, tarea que es una de las mas complicadas dentro del proceso, teniendo en cuenta que no siempre los datos se encuentran de una manera estructurada, el llegar a entender las tecnicas y la estructura que se requiere en los datos para poder implementarlas, es lo que en definitiva hace que el experto sea indispensable a la hora de tomar desiciones de negocio.
+
+
+# Referencias
+
+[Introduction to Data Mining (Second Edition)](https://www-users.cs.umn.edu/~kumar001/dmbook/index.php)
+
+[Machine Learning Repository](http://archive.ics.uci.edu/ml/datasets.php)
+
+[Package ‘RandomForest’](https://cran.r-project.org/web/packages/randomForest/randomForest.pdf)
+
+[Calvo M, Subirats L, Pérez D (2019)](Introducción a la limpieza y análisis de los datos. Editorial UOC)
+
+[Peter Dalgaard (2008)](Introductory statistics with R. Springer Science & Business Media.)
+
+</div>.
